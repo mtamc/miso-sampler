@@ -42,10 +42,13 @@ executable app
   main-is:
     Main.hs
   other-modules:
-    BoundChildCounter
+    PenpalChildCounter,
+    PenpalChildTextarea,
+    Miso.TH
   build-depends:
     base < 5,
-    miso >= 1.9
+    miso >= 1.9,
+    template-haskell
   hs-source-dirs:
     app
   default-language:
