@@ -41,8 +41,11 @@ executable app
     options, warnings
   main-is:
     Main.hs
-  build-depends: 
-    base < 5, miso >= 1.9
+  other-modules:
+    BoundChildCounter
+  build-depends:
+    base < 5,
+    miso >= 1.9
   hs-source-dirs:
     app
   default-language:
