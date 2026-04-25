@@ -1,174 +1,193 @@
------------------------------------------------------------------------------
-{-# LANGUAGE CPP               #-}
-{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
------------------------------------------------------------------------------
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
+
+{- HLINT ignore "Use newtype instead of data" -}
+
 module Main where
------------------------------------------------------------------------------
-import           Miso
-import           Miso.Html.Element as H
-import           Miso.Html.Event as E
-import           Miso.Html.Property as P
-import           Miso.Lens
-import           Miso.String
+
+import Miso hiding (Parent, Child)
 import qualified Miso.CSS as CSS
-import           Miso.CSS (StyleSheet)
------------------------------------------------------------------------------
-data Action
-  = AddOne
-  | SubtractOne
-  | SayHelloWorld
-  deriving (Show, Eq)
------------------------------------------------------------------------------
+import Miso.Html.Element as H
+import Miso.Html.Event as E
+import Miso.Html.Property as P
+import Miso.Lens
+import qualified Miso.String
+
 #ifdef WASM
 #ifndef INTERACTIVE
 foreign export javascript "hs_start" main :: IO ()
 #endif
 #endif
------------------------------------------------------------------------------
+
 main :: IO ()
 #ifdef INTERACTIVE
 main = reload defaultEvents app
 #else
 main = startApp defaultEvents app
 #endif
------------------------------------------------------------------------------
-app :: App Int Action
-app = (component 0 updateModel viewModel)
-  { styles = [ Sheet sheet ]
-  }
------------------------------------------------------------------------------
-updateModel :: Action -> Effect parent Int Action
-updateModel = \case
-  AddOne ->
-    this += 1
-  SubtractOne ->
-    this -= 1
-  SayHelloWorld ->
-    io_ (consoleLog "Hello World!")
------------------------------------------------------------------------------
-viewModel :: Int -> View Int Action
-viewModel x = H.div_
-  [ P.class_ "counter-container" ]
-  [ H.h1_
-    [ P.class_ "counter-title"
-    ]
-    [ "🍜 Miso sampler"
-    ]
-  , H.div_
-    [ P.class_ "counter-display"
-    ]
-    [ text (ms x)
-    ]
-  , H.div_
-    [ P.class_ "buttons-container"
-    ]
-    [ H.button_
-      [ E.onClick AddOne
-      , P.class_ "decrement-btn"
-      ] [text "+"]
-    , H.button_
-      [ E.onClick SubtractOne
-      , P.class_ "increment-btn"
-      ] [text "-"]
-    ]
-  ]
------------------------------------------------------------------------------
-sheet :: StyleSheet
-sheet =
-  CSS.sheet_
-  [ CSS.selector_ ":root"
-    [ "--primary-color" =: "#4a6bff"
-    , "--primary-hover" =: "#3451d1"
-    , "--secondary-color" =: "#ff4a6b"
-    , "--secondary-hover" =: "#d13451"
-    , "--background" =: "#f7f9fc"
-    , "--text-color" =: "#333"
-    , "--shadow" =: "0 4px 10px rgba(0, 0, 0, 0.1);"
-    , "--transition" =: "all 0.3s ease;"
-    ]
-  , CSS.selector_ "body"
-    [ CSS.fontFamily "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
-    , CSS.display "flex"
-    , CSS.justifyContent "center"
-    , CSS.alignItems "center"
-    , CSS.height "100vh"
-    , CSS.margin "0"
-    , CSS.backgroundColor (CSS.var "background")
-    , CSS.color (CSS.var "text-color")
-    ]
-  , CSS.selector_ ".counter-container"
-    [ CSS.backgroundColor CSS.white
-    , CSS.padding (CSS.rem 2)
-    , CSS.borderRadius (CSS.px 12)
-    , CSS.boxShadow "shadow"
-    , CSS.textAlign "center"
-    ]
-  , CSS.selector_ ".counter-display"
-    [ CSS.fontSize "5rem"
-    , CSS.fontWeight "bold"
-    , CSS.margin "1CSS.rem 0"
-    , CSS.transition "var(--transition)"
-    ]
-  , CSS.selector_ ".buttons-container"
-    [ CSS.display "flex"
-    , CSS.gap "1rem"
-    , CSS.justifyContent "center"
-    , CSS.marginTop "1.5rem"
-    ]
-  , CSS.selector_ "button"
-    [ CSS.fontSize "1.5rem"
-    , CSS.width "3rem"
-    , CSS.height "3rem"
-    , CSS.border "none"
-    , CSS.borderRadius "50%"
-    , CSS.cursor "pointer"
-    , CSS.transition "var(--transition)"
-    , CSS.color CSS.white
-    , CSS.display "flex"
-    , CSS.alignItems "center"
-    , CSS.justifyContent "center"
-    ]
-  , CSS.selector_ ".increment-btn"
-    [ CSS.backgroundColor (CSS.var "primary-color")
-    ]
-  , CSS.selector_ ".increment-btn:hover"
-    [ CSS.backgroundColor (CSS.var "primary-hover")
-    , CSS.transform "translateY(-2px)"
-    ]
-  , CSS.selector_ ".decrement-btn"
-    [ CSS.backgroundColor (CSS.var "secondary-color")
-    ]
-  , CSS.selector_ ".decrement-btn:hover"
-    [ CSS.backgroundColor (CSS.var "secondary-hover")
-    , CSS.transform "translateY(-2px)"
-    ]
-  , CSS.keyframes_ "pulse"
-    [ CSS.pct 0 =:
-      [ CSS.transform "scale(1)"
-      ]
-    , CSS.pct 50 =:
-      [ CSS.transform "scale(1.1)"
-      ]
-    , CSS.pct 100 =:
-      [ CSS.transform "scale(1)"
-      ]
-    ]
-  , CSS.selector_ ".counter-display.animate"
-    [ CSS.animation "pulse 0.3s ease"
-    ]
-  , CSS.media_ "(max-width: 480px)"
-    [ ".counter-container" =:
-      [ CSS.padding (CSS.rem 1.5)
-      ]
-    , ".counter-display" =:
-      [ CSS.fontSize (CSS.rem 3)
-      ]
-    , "button" =:
-      [ CSS.fontSize (CSS.rem 1.2)
-      , CSS.width (CSS.rem 2.5)
-      , CSS.width (CSS.rem 2.5)
-      ]
-    ]
-  ]
------------------------------------------------------------------------------
+
+app = grandparent
+
+(%) = flip compose
+
+----------------------------------------------------------------------------------------------------
+
+grandparent :: App Gp GpAction
+grandparent = component (Gp True) updateModel viewModel
+
+data Gp = Gp {_validate :: Bool} deriving (Show, Eq)
+validateL = lens _validate (\x y -> x{_validate = y})
+
+data GpAction = ToggleValidate Checked deriving (Show, Eq)
+
+updateModel :: GpAction -> Effect parent Gp GpAction
+updateModel (ToggleValidate (Checked bool)) = validateL .= bool
+
+viewModel :: Gp -> View Gp GpAction
+viewModel mdl =
+    H.div_
+        [ CSS.style_ [CSS.border "4px solid blue", CSS.padding "10px", CSS.color CSS.blue]
+        ]
+        [ H.h1_ [] ["Grandparent"]
+        , -- , H.div_ [] [text ("(DEBUG: My model is: " <> ms (show mdl) <> ")")]
+          H.div_
+            []
+            [ H.input_
+                [ P.type_ "checkbox"
+                , P.checked_ (mdl ^. validateL)
+                , E.onChecked ToggleValidate
+                ]
+            , "Enable validation"
+            ]
+        , H.div_
+            [CSS.style_ [CSS.fontWeight "bold", CSS.marginTop "30px"]]
+            [text "(DEBUG: The prop I want to pass is: validate = ", text (ms (show (mdl ^. validateL))), ")"]
+        , "parent" +> parentComponent (mdl ^. validateL)
+        ]
+
+----------------------------------------------------------------------------------------------------
+
+parentComponent :: Bool -> Component grandparent Parent ParentAction
+parentComponent validate =
+    (component initParent updateParent (viewParent validate))
+        { reactiveRendering = True
+        }
+
+initParent :: Parent
+initParent = Parent "" initChild
+
+data Parent = Parent
+    { _text :: MisoString
+    , _child :: Child
+    }
+    deriving (Show, Eq)
+textL :: Lens Parent MisoString
+textL = lens _text (\x y -> x{_text = y})
+childL :: Lens Parent Child
+childL = lens _child (\x y -> x{_child = y})
+
+data ParentAction = OnInput MisoString deriving (Show, Eq)
+
+updateParent :: ParentAction -> Effect parent Parent ParentAction
+updateParent (OnInput str) = textL .= str
+
+viewParent :: Bool -> Parent -> View Parent ParentAction
+viewParent validate mdl =
+    let textLen = Miso.String.length (mdl ^. textL)
+        counterVal = mdl ^. childL % counterL
+        typedText = mdl ^. textL
+        validation =
+            if
+                | not validate -> []
+                | counterVal > textLen -> ["Your estimate is too high!"]
+                | counterVal < textLen -> ["Your estimate is too low!"]
+                | otherwise -> []
+     in H.div_
+            [ CSS.style_
+                [ CSS.border "4px solid green"
+                , CSS.padding "10px"
+                , CSS.margin "20px"
+                , CSS.color CSS.green
+                ]
+            ]
+            [ H.div_
+                [CSS.style_ [CSS.fontWeight "bold"]]
+                [text ("(DEBUG: The prop I received from my parent is: validate = " <> ms (show validate) <> ")")]
+            , H.h1_ [] ["Parent"]
+            , -- , H.div_ [] [text ("(DEBUG: My model is: " <> ms (show mdl) <> ")")]
+              H.div_
+                []
+                [ "Your Text "
+                , H.input_
+                    [ P.type_ "text"
+                    , P.value_ typedText
+                    , E.onInput OnInput
+                    ]
+                ]
+            , H.div_ [] ["You have typed: ", text typedText]
+            , H.div_
+                [CSS.style_ [CSS.fontWeight "bold", CSS.marginTop "40px"]]
+                ["(DEBUG: The prop I want to pass is: validation = ", text (ms (show validation)), ")"]
+            , "child"
+                +> childComponent childL validation
+            ]
+
+----------------------------------------------------------------------------------------------------
+
+childComponent :: Lens parent Child -> [MisoString] -> Component parent Child ChildAction
+childComponent lensParentToChild validation =
+    (component (Child 0) updateChild (viewChild validation))
+        { bindings = [lensParentToChild <--> this]
+        , reactiveRendering = True
+        }
+
+initChild :: Child
+initChild = Child 0
+
+data Child = Child
+    { _counter :: Int
+    }
+    deriving (Show, Eq)
+counterL = lens _counter (\x y -> x{_counter = y})
+
+data ChildAction = Incr | Decr deriving (Show, Eq)
+
+updateChild :: ChildAction -> Effect parent Child ChildAction
+updateChild = \case
+    Incr -> counterL += 1
+    Decr -> counterL -= 1
+
+viewChild :: [MisoString] -> Child -> View parent ChildAction
+viewChild validation mdl =
+    H.div_
+        [ CSS.style_
+            [ CSS.border "4px solid teal"
+            , CSS.padding "10px"
+            , CSS.margin "20px"
+            , CSS.color CSS.teal
+            ]
+        ]
+        [ H.div_
+            [CSS.style_ [CSS.fontWeight "bold"]]
+            [text ("(DEBUG: The prop I received from my parent is: validation = " <> ms (show validation) <> ")")]
+        , H.h1_ [] ["Child"]
+        , H.div_ [] ["Estimate how manu characters are in the text input above:"]
+        , H.div_
+            []
+            [ text (ms (show (mdl ^. counterL)))
+            , " | "
+            , H.button_ [E.onClick Incr] ["+1"]
+            , H.button_ [E.onClick Decr] ["-1"]
+            ]
+        , H.div_
+            [ CSS.style_ [CSS.color CSS.red, CSS.marginTop "10px"]
+            ]
+            [ "Validation errors: "
+            , case validation of
+                [] -> "None"
+                _ -> H.ul_ [] (map (H.li_ [] . pure . text) validation)
+            ]
+        ]
