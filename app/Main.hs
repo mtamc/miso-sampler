@@ -1,14 +1,19 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
 {- HLINT ignore "Use newtype instead of data" -}
 
 module Main where
 
-import Miso hiding (Parent, Child)
+import Data.Maybe (fromMaybe)
+import Miso hiding (Child, Parent)
 import qualified Miso.CSS as CSS
 import Miso.Html.Element as H
 import Miso.Html.Event as E
@@ -43,11 +48,11 @@ validateL = lens _validate (\x y -> x{_validate = y})
 
 data GpAction = ToggleValidate Checked deriving (Show, Eq)
 
-updateModel :: GpAction -> Effect parent Gp GpAction
+updateModel :: GpAction -> Effect parentAction parent Gp GpAction
 updateModel (ToggleValidate (Checked bool)) = validateL .= bool
 
-viewModel :: Gp -> View Gp GpAction
-viewModel mdl =
+viewModel :: Maybe ROOT -> Gp -> View Gp GpAction
+viewModel _ mdl =
     H.div_
         [ CSS.style_ [CSS.border "4px solid blue", CSS.padding "10px", CSS.color CSS.blue]
         ]
@@ -65,16 +70,13 @@ viewModel mdl =
         , H.div_
             [CSS.style_ [CSS.fontWeight "bold", CSS.marginTop "30px"]]
             [text "(DEBUG: The prop I want to pass is: validate = ", text (ms (show (mdl ^. validateL))), ")"]
-        , "parent" +> parentComponent (mdl ^. validateL)
+        , Miso.mountProps_ "parent" (mdl ^. validateL) parentComponent
         ]
 
 ----------------------------------------------------------------------------------------------------
 
-parentComponent :: Bool -> Component grandparent Parent ParentAction
-parentComponent validate =
-    (component initParent updateParent (viewParent validate))
-        { reactiveRendering = True
-        }
+parentComponent :: Component grandparent grandparentAction Bool Parent ParentAction
+parentComponent = component initParent updateParent viewParent
 
 initParent :: Parent
 initParent = Parent "" initChild
@@ -91,12 +93,13 @@ childL = lens _child (\x y -> x{_child = y})
 
 data ParentAction = OnInput MisoString deriving (Show, Eq)
 
-updateParent :: ParentAction -> Effect parent Parent ParentAction
+updateParent :: ParentAction -> Effect parentAction parent Parent ParentAction
 updateParent (OnInput str) = textL .= str
 
-viewParent :: Bool -> Parent -> View Parent ParentAction
-viewParent validate mdl =
-    let textLen = Miso.String.length (mdl ^. textL)
+viewParent :: Maybe Bool -> Parent -> View Parent ParentAction
+viewParent mprops mdl =
+    let validate = mprops & fromMaybe False
+        textLen = Miso.String.length (mdl ^. textL)
         counterVal = mdl ^. childL % counterL
         typedText = mdl ^. textL
         validation =
@@ -115,7 +118,7 @@ viewParent validate mdl =
             ]
             [ H.div_
                 [CSS.style_ [CSS.fontWeight "bold"]]
-                [text ("(DEBUG: The prop I received from my parent is: validate = " <> ms (show validate) <> ")")]
+                [text ("(DEBUG: The prop I received from my parent is: validate = " <> ms (show mprops) <> ")")]
             , H.h1_ [] ["Parent"]
             , -- , H.div_ [] [text ("(DEBUG: My model is: " <> ms (show mdl) <> ")")]
               H.div_
@@ -130,18 +133,16 @@ viewParent validate mdl =
             , H.div_ [] ["You have typed: ", text typedText]
             , H.div_
                 [CSS.style_ [CSS.fontWeight "bold", CSS.marginTop "40px"]]
-                ["(DEBUG: The prop I want to pass is: validation = ", text (ms (show validation)), ")"]
-            , "child"
-                +> childComponent childL validation
+                ["(DEBUG: The prop I want to pass is: validation = ", text (ms (show mprops)), ")"]
+            , Miso.mountProps_ "child" validation (childComponent childL)
             ]
 
 ----------------------------------------------------------------------------------------------------
 
-childComponent :: Lens parent Child -> [MisoString] -> Component parent Child ChildAction
-childComponent lensParentToChild validation =
-    (component (Child 0) updateChild (viewChild validation))
+childComponent :: Lens parent Child -> Component parent parentAction [MisoString] Child ChildAction
+childComponent lensParentToChild =
+    (component (Child 0) updateChild viewChild)
         { bindings = [lensParentToChild <--> this]
-        , reactiveRendering = True
         }
 
 initChild :: Child
@@ -155,39 +156,40 @@ counterL = lens _counter (\x y -> x{_counter = y})
 
 data ChildAction = Incr | Decr deriving (Show, Eq)
 
-updateChild :: ChildAction -> Effect parent Child ChildAction
+updateChild :: ChildAction -> Effect parentAction parent Child ChildAction
 updateChild = \case
     Incr -> counterL += 1
     Decr -> counterL -= 1
 
-viewChild :: [MisoString] -> Child -> View parent ChildAction
-viewChild validation mdl =
-    H.div_
-        [ CSS.style_
-            [ CSS.border "4px solid teal"
-            , CSS.padding "10px"
-            , CSS.margin "20px"
-            , CSS.color CSS.teal
+viewChild :: Maybe [MisoString] -> Child -> View parent ChildAction
+viewChild mprops mdl =
+    let validation = mprops & fromMaybe []
+     in H.div_
+            [ CSS.style_
+                [ CSS.border "4px solid teal"
+                , CSS.padding "10px"
+                , CSS.margin "20px"
+                , CSS.color CSS.teal
+                ]
             ]
-        ]
-        [ H.div_
-            [CSS.style_ [CSS.fontWeight "bold"]]
-            [text ("(DEBUG: The prop I received from my parent is: validation = " <> ms (show validation) <> ")")]
-        , H.h1_ [] ["Child"]
-        , H.div_ [] ["Estimate how manu characters are in the text input above:"]
-        , H.div_
-            []
-            [ text (ms (show (mdl ^. counterL)))
-            , " | "
-            , H.button_ [E.onClick Incr] ["+1"]
-            , H.button_ [E.onClick Decr] ["-1"]
+            [ H.div_
+                [CSS.style_ [CSS.fontWeight "bold"]]
+                [text ("(DEBUG: The prop I received from my parent is: validation = " <> ms (show mprops) <> ")")]
+            , H.h1_ [] ["Child"]
+            , H.div_ [] ["Estimate how manu characters are in the text input above:"]
+            , H.div_
+                []
+                [ text (ms (show (mdl ^. counterL)))
+                , " | "
+                , H.button_ [E.onClick Incr] ["+1"]
+                , H.button_ [E.onClick Decr] ["-1"]
+                ]
+            , H.div_
+                [ CSS.style_ [CSS.color CSS.red, CSS.marginTop "10px"]
+                ]
+                [ "Validation errors: "
+                , case validation of
+                    [] -> "None"
+                    _ -> H.ul_ [] (map (H.li_ [] . pure . text) validation)
+                ]
             ]
-        , H.div_
-            [ CSS.style_ [CSS.color CSS.red, CSS.marginTop "10px"]
-            ]
-            [ "Validation errors: "
-            , case validation of
-                [] -> "None"
-                _ -> H.ul_ [] (map (H.li_ [] . pure . text) validation)
-            ]
-        ]
